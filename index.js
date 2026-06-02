@@ -1,64 +1,56 @@
+const WebSocket = require('ws');
 const mc = require('minecraft-protocol');
 const mineflayer = require('mineflayer');
 
 console.clear();
-console.log('=== СТАРТ МЕГА-PROX`Y НА ХМАРІ ===');
+console.log('=== СТАРТ ХМАРНОГО PROXY НА RENDER ===');
 
 const TARGET_HOST = 'mc.sakeva.fun';
 const TARGET_PORT = 25565;
-// Хмаринка Render дає свій порт у змінній process.env.PORT, або використовуємо 10000 за замовчуванням
-const PROXY_PORT = process.env.PORT || 10000; 
-const NICKNAME = 'Lampa752';
+const PORT = process.env.PORT || 10000;
 
-const localServer = mc.createServer({
-  'online-mode': false, 
-  port: PROXY_PORT,
-  keepAlive: false
-});
+// Створюємо веб-сокет сервер, який Render безкоштовно пропустить назовні
+const wss = new WebSocket.Server({ port: PORT });
+console.log(`Хмарний сервер чекає на з'єднання через порт ${PORT}...`);
 
-console.log(`Проксі запущено в хмарі на порту ${PROXY_PORT}! Очікування підключення з ніком ${NICKNAME}...`);
+wss.on('connection', (ws) => {
+  console.log('[Хмара] ПК успішно підключився до хмаринки!');
 
-localServer.on('login', (client) => {
-  console.log(`[Хмара] Отримано підключення від клієнта: ${client.username}`);
-  console.log(`[Хмара] Версія протоколу гравця: ${client.version}`);
-  
+  // Створюємо віртуальний клієнт до Minecraft сервера
   const targetClient = mc.createClient({
     host: TARGET_HOST,
     port: TARGET_PORT,
-    username: client.username,
+    username: 'Lampa752',
     auth: 'offline',
-    version: client.version
+    version: '1.21.11'
   });
 
-  client.on('packet', (data, meta) => {
-    if (targetClient.state === meta.state) {
-      targetClient.write(meta.name, data);
-    }
+  // Перенаправлення пакетів хмара -> сервер і назад
+  ws.on('message', (message) => {
+    const { name, data } = JSON.parse(message);
+    if (targetClient.state) targetClient.write(name, data);
   });
 
   targetClient.on('packet', (data, meta) => {
-    if (client.state === meta.state) {
-      client.write(meta.name, data);
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ name: meta.name, data }));
     }
   });
 
-  client.on('end', () => {
-    console.log('\n[УСПІХ] Ти вийшов з гри на ПК. Передаю керування боту Mineflayer в хмарі...');
+  ws.on('close', () => {
+    console.log('\n[УСПІХ] Ти вимкнув ПК! Передаю сесію боту Mineflayer в хмарі...');
 
     const bot = mineflayer.createBot({
-      client: targetClient, 
-      username: client.username
+      client: targetClient,
+      username: 'Lampa752'
     });
 
     bot.on('spawn', () => {
-      console.log('🤖 БОТ УСПІШНО ЗАФІКСОВАНИЙ НА СЕРВЕРІ СУПЕР-ХМАРОЮ!');
+      console.log('🤖 БОТ УСПІШНО ЗАФІКСОВАНИЙ НА СЕРВЕРІ! Комп’ютер можна вимикати.');
     });
 
-    bot.on('message', (message) => {
-      console.log(`[Чат бота]: ${message.toAnsi()}`);
-    });
-
-    bot.on('error', (err) => console.log('❌ Помилка бота:', err.message));
-    bot.on('kicked', (reason) => console.log('❌ Бота кікнуло:', reason));
+    bot.on('message', (message) => console.log(`[Чат]: ${message.toAnsi()}`));
+    bot.on('error', (err) => console.log('❌ Помилка:', err.message));
+    bot.on('kicked', (reason) => console.log('❌ Кік:', reason));
   });
 });
