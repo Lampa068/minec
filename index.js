@@ -9,14 +9,12 @@ const TARGET_HOST = 'mc.sakeva.fun';
 const TARGET_PORT = 25565;
 const PORT = process.env.PORT || 10000;
 
-// Створюємо веб-сокет сервер, який Render безкоштовно пропустить назовні
 const wss = new WebSocket.Server({ port: PORT });
-console.log(`Хмарний сервер чекає на з'єднання через порт ${PORT}...`);
+console.log(`Хмарний server чекає на з'єднання через порт ${PORT}...`);
 
 wss.on('connection', (ws) => {
-  console.log('[Хмара] ПК успішно підключився до хмаринки!');
+  console.log('[Хмара] ПК підключився до хмаринки!');
 
-  // Створюємо віртуальний клієнт до Minecraft сервера
   const targetClient = mc.createClient({
     host: TARGET_HOST,
     port: TARGET_PORT,
@@ -25,20 +23,22 @@ wss.on('connection', (ws) => {
     version: '1.21.11'
   });
 
-  // Перенаправлення пакетів хмара -> сервер і назад
-  ws.on('message', (message) => {
-    const { name, data } = JSON.parse(message);
-    if (targetClient.state) targetClient.write(name, data);
+  // Приймаємо бінарні пакети від ПК і шлемо на Сакеву
+  ws.on('message', (msg) => {
+    if (targetClient.state) {
+      targetClient.writeRaw(msg);
+    }
   });
 
-  targetClient.on('packet', (data, meta) => {
+  // Перехоплюємо сирі пакети від Сакеви і шлемо на ПК
+  targetClient.on('raw', (buffer) => {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ name: meta.name, data }));
+      ws.send(buffer);
     }
   });
 
   ws.on('close', () => {
-    console.log('\n[УСПІХ] Ти вимкнув ПК! Передаю сесію боту Mineflayer в хмарі...');
+    console.log('\n[УСПІХ] Ти вийшов з гри на ПК. Передаю керування боту Mineflayer...');
 
     const bot = mineflayer.createBot({
       client: targetClient,
@@ -46,11 +46,11 @@ wss.on('connection', (ws) => {
     });
 
     bot.on('spawn', () => {
-      console.log('🤖 БОТ УСПІШНО ЗАФІКСОВАНИЙ НА СЕРВЕРІ! Комп’ютер можна вимикати.');
+      console.log('🤖 БОТ УСПІШНО ЗАФІКСОВАНИЙ НА СЕРВЕРІ СУПЕР-ХМАРОЮ!');
     });
 
-    bot.on('message', (message) => console.log(`[Чат]: ${message.toAnsi()}`));
-    bot.on('error', (err) => console.log('❌ Помилка:', err.message));
-    bot.on('kicked', (reason) => console.log('❌ Кік:', reason));
+    bot.on('message', (message) => console.log(`[Чат бота]: ${message.toAnsi()}`));
+    bot.on('error', (err) => console.log('❌ Помилка бота:', err.message));
+    bot.on('kicked', (reason) => console.log('❌ Бота кікнуло:', reason));
   });
 });
